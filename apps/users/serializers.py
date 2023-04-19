@@ -1,6 +1,8 @@
-from rest_framework import serializers
-from apps.users.models import UserAccount
 from django.contrib.auth import authenticate
+from rest_framework import serializers
+
+from apps.users.models import UserAccount
+
 
 class UserSerializer(serializers.HyperlinkedModelSerializer):
 
@@ -8,7 +10,7 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
     type = serializers.ChoiceField(choices = UserAccount.Types.choices) 
     class Meta:
         model = UserAccount
-        fields = ['url', 'username', 'email', 'full_name', 'is_staff', 'password', 'type']
+        fields = ['url', 'username', 'email', 'full_name','contact_number', 'address', 'is_staff','is_firsttimelogin', 'is_active','is_admin', 'password', 'type', 'profile_image']
 
     def validate_type(self, type):
         # custom validation

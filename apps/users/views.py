@@ -5,33 +5,29 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.users.models import UserAccount
-from apps.landlords.models import PropertyOwner
+from apps.landlords.models import Landlord
 from apps.tenants.models import Tenant
-
+from apps.users.models import UserAccount
 from apps.users.serializers import LoginSerializer, UserSerializer
 
 User = get_user_model()
 
 # ViewSets define the view behavior.
-
-
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
-# To register the user
-
-
-class UserRegistrationView(APIView):
-    permission_classes = [AllowAny]
-
-
 class UserRegistrationView(generics.CreateAPIView):
+
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
 
-    def post(self, request, *args, **kwargs):
+# To register the user
+    def create(self, request, *args, **kwargs):
+        # ====================
+        # create the user
+        # ====================
+
         serializer = UserSerializer(data=self.request.data, context={
                                     'request': self.request})
 
@@ -40,14 +36,14 @@ class UserRegistrationView(generics.CreateAPIView):
         user.set_password(request.data.get("password"))
         user.save()
 
-        # create a PropertyOwner object if the user type is "LANDLORD"
+        # create a Landlord object if the user type is "LANDLORD"
         if serializer.validated_data['type'] == UserAccount.Types.LANDLORD:
             contact_number = serializer.validated_data.get('contact_number')
-            property_owner = PropertyOwner.objects.create(
+            landlord = Landlord.objects.create(
                 user=user,
                 contact_number=contact_number
             )
-            property_owner.save()
+            landlord.save()
             return Response({'message': 'Registration successful', 'status': 'success'}, status=status.HTTP_201_CREATED)
 
         elif serializer.validated_data['type'] == UserAccount.Types.TENANT:
@@ -74,7 +70,7 @@ class LoginView(APIView):
         refresh = RefreshToken.for_user(user)
         if user.type == 'LANDLORD':
             try:
-                user_instance = PropertyOwner.objects.filter(
+                user_instance = Landlord.objects.filter(
                     user=user).values('id')
                 user_type_id = user_instance[0].get('id')
             except Exception as e:

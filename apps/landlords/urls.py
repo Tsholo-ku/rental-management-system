@@ -1,7 +1,15 @@
-from django.urls import path
-from .views import OwnerTenantList
+from django.urls import path, include
+from apps.landlords.views import LandlordViewSet
+from rest_framework.routers import DefaultRouter
 
-app_name = 'landlord'
+app_name = 'landlords'
+
+router = DefaultRouter()
+
+router.register("landlords", LandlordViewSet, basename="landlord")
+
 urlpatterns = [
-    path('addtenant/', OwnerTenantList.as_view(), name='tenant_list'),
+    path('', include(router.urls)),
 ]
+
+urlpatterns += router.urls

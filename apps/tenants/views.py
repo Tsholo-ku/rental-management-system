@@ -1,47 +1,67 @@
-from django.shortcuts import render
-
-# Create your views here.
-
-from rest_framework import viewsets, generics, status, authentication, permissions
-
-from apps.tenants.serializers import TenantSerializer
-from apps.tenants.models import Tenant
-from apps.property.serializers import ContractSerializer
-from rest_framework.response import Response
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import AuthenticationFailed
-from apps.landlords.models import PropertyOwner
+from rest_framework.response import Response
+
+from apps.landlords.models import Landlord
+from apps.tenants.models import Tenant
+from apps.tenants.serializers import TenantSerializer
 
 
-class TenantListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated,]
+class TenantViewSet(viewsets.ModelViewSet):
+    queryset = Tenant.objects.all()
     serializer_class = TenantSerializer
+    permission_classes = [IsAuthenticated]
 
+    def create(self, request, *args, **kwargs):
+        
+        # ====================
+        # create the Tenant using the data provided by the user
+        # ====================
+
+        # create the invoice
+        tenant = TenantSerializer(data=request.data)
+        if tenant.is_valid():
+            tenant.save()
+
+            response_data = {
+                "status": 201,
+                "message": "Tenant created successfully",
+                "tenant": tenant.data,
+            }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+
+        # ====================
+        # update the tenant using the data provided by the user
+        # ====================
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
     def get_queryset(self):
         user = self.request.user
-        print(user)
-        owner_instance = PropertyOwner.objects.get(
-            user=user)
+        # Determine if the user is a landlord or tenant and filter the invoices accordingly
+        if user.type == 'LANDLORD' or user.type == 'Landlord':
+            # get the landlord
+            landlord = Landlord.objects.get(user__id=id)
+            queryset = Tenant.objects.filter(landlord=landlord)
+        else:
+            # get tenant
+        
+            queryset = Landlord.objects.filter(user__id=user.id)
+        return queryset
 
-        return Tenant.objects.filter(owner=owner_instance)
-
-
-class TenantRemoveView(generics.DestroyAPIView):
-    permission_classes = [IsAuthenticated,]
-
-    def delete(self, request, pk):
-        try:
-            owner_instance = PropertyOwner.objects.get(
-                user=request.user)
-            tenant_instance = Tenant.objects.get(pk=pk)
-            tenant_instance.owner.remove(owner_instance)
-            owner_instance.tenants.remove(tenant_instance)
-            response_data = {'message': 'Tenant removed successfully',
-                             'data': {},
-                             'status': 200}
-            return Response(response_data, status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            response_data = {'message': 'Property not found',
-                             'data': {},
-                             'status': status.HTTP_404_NOT_FOUND}
-            return Response(response_data, status=status.HTTP_404_NOT_FOUND)
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

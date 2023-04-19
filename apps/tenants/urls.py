@@ -1,9 +1,16 @@
-from django.urls import path
-from .views import TenantListView, TenantRemoveView
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from apps.tenants.views import TenantViewSet
 
 app_name = 'tenants'
-urlpatterns = [
-    path('list/', TenantListView.as_view(), name='tenant_list'),
-    path('delete/<int:pk>/', TenantRemoveView.as_view(), name='tenant-delete'),
 
+router = DefaultRouter()
+
+router.register("tenants", TenantViewSet, basename="tenant")
+
+urlpatterns = [
+    path('', include(router.urls)),
 ]
+
+urlpatterns += router.urls

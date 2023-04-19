@@ -1,66 +1,67 @@
-from django.shortcuts import render
-from apps.payment.serializers import PaymentSerializer
-from apps.payment.models import Payment
-from rest_framework import generics, status
-from rest_framework.response import Response
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from apps.payment.models import Payment
+from apps.payment.serializers import PaymentSerializer
+from apps.tenants.models import Tenant
+
 
 # Create your views here.
-
-class PaymentCreateView(generics.CreateAPIView):
-    permission_classes = [IsAuthenticated,]
-    serializer_class = PaymentSerializer
-
-    def post(self, request):
-        serializer = PaymentSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            response_data = {'message': 'Payment created successfully',
-                             'data': serializer.data,
-                             'status': status.HTTP_201_CREATED}
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        else:
-            response_data = {'message': 'Payment creation failed',
-                             'data': serializer.errors,
-                             'status': status.HTTP_400_BAD_REQUEST}
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
-
-class PaymentUpdateView(generics.UpdateAPIView):
+class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.all()
     serializer_class = PaymentSerializer
-    permission_classes = [IsAuthenticated,]
+    permission_classes = [IsAuthenticated]
 
-    def put(self,request, *args, **kwargs):
-        partial = kwargs.pop('patial', False)
+    def create(self, request, *args, **kwargs):
+        
+        # ====================
+        # create the landlord using the data provided by the user
+        # ====================
+
+        # create the invoice
+        payment = PaymentSerializer(data=request.data)
+        if payment.is_valid():
+            payment.save()
+
+        response_data = {
+            "status": 201,
+            "message": "Payment created successfully",
+            "landlord": payment.data,
+        }
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+
+        # ====================
+        # update the payment using the data provided by the user
+        # ====================
+
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        response_data = {'message': 'Payment updated successfully',
-                         'data': serializer.data,
-                         'status': status.HTTP_200_OK}
-        return Response(response_data)
+        return Response(serializer.data)
 
-class PaymentDeleteView(generics.DestroyAPIView):
-    permission_classes=[IsAuthenticated,]
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def get_queryset(self):
+        user = self.request.user
+        # Determine if the user is a landlord or tenant and filter the invoices accordingly
+        if user.type == 'LANDLORD' or user.type == 'Landlord':
+            # get the landlord
+            queryset = Payment.objects.filter(property_owner_id = user.id)
+        else:
+            # get tenant
+            tenant = Tenant.objects.get(user=user)
+            queryset = Payment.objects.filter(tenant_id=user.id)
+        return queryset
 
-    def delete(self, request, pk):
-        try:
-            instance = Payment.objects.get(pk=pk)
-            self.check_object_permissions(request, instance)
-            instance.delete()
-            response_data = {'message': 'Payment deleted successfully',
-                             'data': {},
-                             'status': status.HTTP_204_NO_CONTENT}
-            return Response(response_data, status=status.HTTP_204_NO_CONTENT)
-        except Payment.DoesNotExist:
-            response_data = {'message': 'Payment detail not found',
-                             'data': {},
-                             'status': status.HTTP_404_NOT_FOUND}
-            return Response(response_data, status=status.HTTP_404_NOT_FOUND)
-
-
-class PaymentListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated,]
-    queryset = Payment.objects.all()
-    serializer_class = PaymentSerializer
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
