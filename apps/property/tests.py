@@ -1,14 +1,16 @@
-from django.test import Client, TestCase
+import json
+from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.renderers import JSONRenderer
 from rest_framework.test import APIClient
+from apps.landlords.models import Landlord
+from apps.tenants.models import Tenant
 
 from apps.users.models import UserAccount
 
-from .models import Property
-from .serializers import PropertySerializer
+from apps.property.models import Contract, Property
+
 
 
 class PropertyTests(TestCase):
@@ -16,184 +18,304 @@ class PropertyTests(TestCase):
     def setUp(self):
 
         self.client = APIClient()
-        # create a test user
-        self.username = 'testuser'
-        self.full_name = 'test user'
-        self.email = 'testuser@example.com'
-        self.password = 'testpass123'
-        self.user = UserAccount.objects.create_user(
-            username=self.username,
-            full_name=self.full_name,
-            email=self.email,
-            password=self.password
+        
+        # create a test landlord user
+        self.landlord_username = 'testlandlord'
+        self.landlord_full_name = 'test landlord'
+        self.landlord_email = 'testlandlord@example.com'
+        self.landlord_password = 'testpass123'
+        self.landlord_contact_number = '0123456789'
+        self.landlord_address = '123 Test Street'
+        self.landlord_type = 'Landlord'
+        self.landlord_user = UserAccount.objects.create_user(
+            username=self.landlord_username,
+            full_name=self.landlord_full_name,
+            email=self.landlord_email,
+            password=self.landlord_password,
+            type=self.landlord_type
         )
+
+        # create a test tenant user
+        self.tenant_username = 'testtenant'
+        self.tenant_full_name = 'test tenant'
+        self.tenant_email = 'testtenant@example.com'
+        self.tenant_password = 'testpass123'
+        self.tenant_address = '123 Test Street'
+        self.tenant_type = 'Tenant'
+        self.tenant_user = UserAccount.objects.create_user(
+            username=self.tenant_username,
+            full_name=self.tenant_full_name,
+            email=self.tenant_email,
+            password=self.tenant_password,
+            type=self.tenant_type
+        )
+
+        self.landlord = Landlord.objects.create(user=self.landlord_user, contact_number='0123456789')
         # create an auth token for the test user
-        self.token = Token.objects.create(user=self.user)
+        self.token = Token.objects.create(user=self.landlord_user)
         # set the auth token for the test client
-        self.client.credentials(HTTP_AUTHORIZATION='Token' + self.token.key)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
 
-        self.property1 = Property.objects.create(
-            property_name='Test Property 1',
-            type='HOUSE',
-            description='Test Description 1',
-            address='Test Address 1',
-            status = 'BOOKED'
-        )
-        self.property2 = Property.objects.create(
-            property_name='Test Property 2',
-            type='APARTMENT',
-            description='Test Description 2',
-            address='Test Address 2',
-            status = 'ON REVIEW'
-        )
-
-        self.valid_property_data = {
-            "property_name": "Test Property 3",
+        
+        # create property data
+        self.property_data = {
+            "landlord": self.landlord.id,
+            "property_name": "Test Property 1",
             "type": "HOUSE",
-            "description": "Test Description 3",
-            "address": "Test Address 3",
+            "description": "Test Description 1",
+            "address": "Test Address 1",
             "status": "OPEN"
         }
-        self.invalid_property_data = {
-            "property_name": "",
-            "type": "HOUSE",
-            "description": "Test Description 3",
-            "address": "Test Address 3",
-            "status": "ON HOLD"
-        }
-        self.property = Property.objects.create(
-            property_name='Test Property',
-            type='HOUSE',
-            description='Test Description',
-            address='Test Address',
-            status='OPEN', 
-        )
-        self.valid_update_data = {
+        
+        self.update_data = {
             'property_name': 'New Property Name',
             'type': 'APARTMENT',
             'description': 'New Description',
             'address': 'New Address',
             'status': 'BOOKED'
         }
-        self.invalid_update_data = {
-            'property_name': '',
-            'type': '',
-            'description': '',
-            'address': '',
-            'status': ''
+    
+        self.property_data_for_object = {
+            "landlord": self.landlord,
+            "property_name": "Test Property 1",
+            "type": "HOUSE",
+            "description": "Test Description 1",
+            "address": "Test Address 1",
+            "status": "OPEN"
         }
 
-    def test_get_all_properties(self):
-        user = UserAccount.objects.get(id=1)
-        try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
-
-        token = Token.objects.create(user=user)
-        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)
-        response = self.client.get(reverse('property-list'))
-        properties = Property.objects.all()
-        serializer = PropertySerializer(properties, many=True)
-        self.assertEqual(response.content, JSONRenderer().render(serializer.data))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-
-    def test_create_valid_property(self):
-        user = UserAccount.objects.get(id=1)
-        try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
-        
-        self.client = APIClient()
-        token = Token.objects.create(user=user)
-        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)
-        self.token = Token.objects.get_or_create(user=user)
-        response = self.client.post(
-            reverse('property-add'),
-            data=self.valid_property_data
+        self.property = Property.objects.create(
+            landlord=self.property_data_for_object["landlord"],
+            property_name=self.property_data_for_object["property_name"],
+            type=self.property_data_for_object["type"],
+            description=self.property_data_for_object["description"],
+            address=self.property_data_for_object["address"],
+            status=self.property_data_for_object["status"],
         )
+
+    def test_create_property(self):
+
+        url = reverse('property:property-list')
+        data = self.property_data
+        response = self.client.post(url, data=data)
+
+        # get the created property
+        property = Property.objects.get(landlord__id=1)
+
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-       
-
-    def test_create_invalid_property(self):
-        self.client = APIClient()
-        user = UserAccount.objects.get(id=1)
-        try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
-        
-        token = Token.objects.create(user=user)
-        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)
-        response = self.client.post(
-            reverse('property-add'),
-            data=self.invalid_property_data
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_update_valid_property(self):
-        user = UserAccount.objects.get(id=1)
-        try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
-
-        token = Token.objects.create(user=user)
-        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)    
-        response = self.client.patch(reverse('property-update', kwargs={'pk': self.property.id}),
-        data=JSONRenderer().render(self.valid_update_data), # JSONRenderer, so we don't have to manually convert the payload to json, it will handle it for us
-        content_type='application/json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_update_invalid_property(self):
-        response = self.client.patch(reverse('property-update', kwargs={'pk': self.property.id}),
-        data=JSONRenderer().render(self.invalid_update_data),
-        content_type='application/json')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-        # sending a delete request and checking to see if it's valid or not
-    def test_invalid_delete_property(self):
-        response = self.client.delete(reverse('property-delete', kwargs={'pk': 30}), content_type='application/json')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIsNotNone(property)
 
 
     def test_delete_property(self):
-        response = self.client.delete(reverse('property-delete', kwargs={'pk': self.property.id}))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)    
 
+        # create a property that we will delete
+        url = reverse('property:property-list')
+        data = self.property_data
+        response = self.client.post(url, data=data)
 
+        # get the property
+        property = Property.objects.all()[0]
+        property_dict = response.json()
+        property_dict["id"] = property.id
 
-    def test_list_properties(self):
-        self.client = APIClient()
-        user = UserAccount.objects.get(id=1)
-        try:
-            token = Token.objects.get(user=user)
-            token.delete()
-        except Token.DoesNotExist:
-            pass
+        # did we successfully create the property
+        self.assertTrue(property.id, 1)
 
-        token = Token.objects.create(user=user)
-        self.client.credentials(HTTP_AUTHORIZATION='Token ' + token.key)
-        # set the accept header to JSON
-        self.client.accept = 'application/json'
-        # make a GET request to the property list endpoint
-        # get API response
-        response = self.client.get(reverse('property-list'))
+        # delete the property
+        url = reverse('property:property-detail', kwargs={'pk': property.id})
+        response = self.client.delete(url)
 
-        # assert that the response status code is 200 OK
+        # try to get the property 
+        property = Property.objects.filter()
+
+        # test checks
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertLess(len(property), 2)  
+
+    def test_update_invoice(self):
+        
+        # create a property that we will update
+        url = reverse('property:property-list')
+        data = self.property_data
+        response = self.client.post(url, data=data)
+
+        # get the invoice
+        property = Property.objects.all()[0]
+        property_dict = response.json()
+        property_dict["id"] = property.id
+
+        # prepare the url
+        url = reverse('property:property-detail', kwargs={"pk":property_dict["id"]})
+
+        # change the data
+        property_dict["property"]["status"] = "BOOKED"
+        property_json = json.dumps(property_dict["property"])
+
+        # update the invoice with new data
+        response = self.client.put(url, data=property_json, content_type='application/json')
+
+        # test checks
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(property_dict['property']['status'], response.json()['status'])  
+        
 
-        # assert that the response data matches the serialized property objects
-        # get data from db
-        properties = Property.objects.all()
-        serializer = PropertySerializer(properties, many=True)
-        self.assertEqual(response.content, JSONRenderer().render(serializer.data))
+class ContractTests(TestCase):
+
+    def setUp(self):
+
+        self.client = APIClient()
         
+        # create a test landlord user
+        self.landlord_username = 'testlandlord'
+        self.landlord_full_name = 'test landlord'
+        self.landlord_email = 'testlandlord@example.com'
+        self.landlord_password = 'testpass123'
+        self.landlord_contact_number = '0123456789'
+        self.landlord_address = '123 Test Street'
+        self.landlord_type = 'Landlord'
+        self.landlord_user = UserAccount.objects.create_user(
+            username=self.landlord_username,
+            full_name=self.landlord_full_name,
+            email=self.landlord_email,
+            password=self.landlord_password,
+            type=self.landlord_type
+        )
+
+        # create a test tenant user
+        self.tenant_username = 'testtenant'
+        self.tenant_full_name = 'test tenant'
+        self.tenant_email = 'testtenant@example.com'
+        self.tenant_password = 'testpass123'
+        self.tenant_address = '123 Test Street'
+        self.tenant_type = 'Tenant'
+        self.tenant_user = UserAccount.objects.create_user(
+            username=self.tenant_username,
+            full_name=self.tenant_full_name,
+            email=self.tenant_email,
+            password=self.tenant_password,
+            type=self.tenant_type
+        )
+
+        landlord = Landlord.objects.create(user=self.landlord_user, contact_number='0123456789')
+        tenant = Tenant.objects.create(user=self.tenant_user)
         
+        # create an auth token for the test user
+        self.token = Token.objects.create(user=self.landlord_user)
+        # set the auth token for the test client
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)  
+
+        # create test property
+        self.property = Property.objects.create(
+            property_name='Test Property',
+            type='HOUSE',
+            description='Test Description',
+            address='Test Address',
+            status='OPEN',
+            landlord=landlord
+        ) 
+
+        
+
+
+        # create test contract data
+        self.contract_data = {
+            "property": self.property.id,
+            "tenant": tenant.id,
+            "landlord":landlord,
+            "contract_starts":"2022-01-01",
+            "contract_ends":"2024-01-01",
+            "payment_type":"MONTHLY",
+            "rental_amount":"500.00",
+            "contract_status":True
+        }
+
+        self.contract_data_for_object = {
+            "property": self.property,
+            "tenant": tenant,
+            "landlord":landlord,
+            "contract_starts":"2022-01-01",
+            "contract_ends":"2023-01-01",
+            "payment_type":"MONTHLY",
+            "rental_amount":"500.00",
+            "contract_status":True
+        }
+
+        self.contract = Contract.objects.create(
+            property = self.contract_data_for_object["property"],
+            tenant = self.contract_data_for_object["tenant"],
+            landlord= self.contract_data_for_object["landlord"],
+            contract_starts = self.contract_data_for_object["contract_starts"],
+            contract_ends= self.contract_data_for_object["contract_ends"],
+            payment_type= self.contract_data_for_object["payment_type"],
+            rental_amount= self.contract_data_for_object["rental_amount"],
+            contract_status= self.contract_data_for_object["contract_status"]
+        )
+
+    def test_create_contract(self): 
+        url = reverse('property:contract-list')
+        data = self.contract_data
+        response = self.client.post(url, data=data)
+
+        # get the created contract
+        contract = Contract.objects.get(landlord__id=1)
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNotNone(contract)
+
+
+    def test_delete_contract(self):
+
+        # create a contract that we will delete
+        url = reverse('property:contract-list')
+        data = self.contract_data
+        response = self.client.post(url, data=data)
+
+        # get the contract
+        contract = Contract.objects.all()[0]
+        contract_dict = response.json()
+        contract_dict["id"] = contract.id
+
+        # did we successfully create the contract
+        self.assertTrue(contract.id, 1)
+
+        # delete the contract
+        url = reverse('property:contract-detail', kwargs={'pk': contract.id})
+        response = self.client.delete(url)
+
+        # try to get the contract 
+        contract = Contract.objects.filter()
+
+        # test checks
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertLess(len(contract), 2)
+
+    def test_update_contract(self):
+        
+        # create a contract that we will update
+        url = reverse('property:contract-list')
+        data = self.contract_data
+        response = self.client.post(url, data=data)
+
+        # get the contract
+        contract = Contract.objects.all()[0]
+        contract_dict = response.json()
+        contract_dict["id"] = contract.id
+
+        # prepare the url
+        url = reverse('property:contract-detail', kwargs={"pk":contract_dict["id"]})
+
+        # change the data
+        contract_dict["contract"]["payment_type"] = "WEEKLY"
+        contract_json = json.dumps(contract_dict["contract"])
+
+        # update the invoice with new data
+        response = self.client.put(url, data=contract_json, content_type='application/json')
+        
+        # test checks
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(contract_dict['contract']['payment_type'], response.json()['payment_type'])   
+
+
+    def test_list_invoices(self):
+        response = self.client.get(reverse('property:contract-list'))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

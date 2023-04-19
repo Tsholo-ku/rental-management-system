@@ -1,7 +1,7 @@
 from rest_framework import serializers
-from .models import PropertyOwner
+from apps.landlords.models import Landlord
 
-class PropertyOwnerSerializer(serializers.ModelSerializer):
+class LandlordSerializer(serializers.ModelSerializer):
    class Meta:
-        model = PropertyOwner
+        model = Landlord
         fields = ('user', 'tenants', 'property','created_at', 'updated_at', 'contact_number')

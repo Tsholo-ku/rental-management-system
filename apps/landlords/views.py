@@ -1,95 +1,66 @@
-from django.shortcuts import render
-from rest_framework import generics, status
-from apps.landlords.models import PropertyOwner
-from apps.landlords.serializers import PropertyOwnerSerializer
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from apps.landlords.models import Landlord
+from apps.landlords.serializers import LandlordSerializer
 from apps.tenants.models import Tenant
-from django.core.exceptions import ObjectDoesNotExist
 
 
-class OwnerTenantList(generics.ListAPIView):
-    serializer_class = PropertyOwnerSerializer
-    permission_classes = [IsAuthenticated,]
+class LandlordViewSet(viewsets.ModelViewSet):
+    queryset = Landlord.objects.all()
+    serializer_class = LandlordSerializer
+    permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        data = []
-        try:
-            tenant_list = PropertyOwner.objects.filter(
-                user=request.user).values('tenants')
-            if len(tenant_list) == 1 and tenant_list[0].get('tenants') == None:
-                tenants = Tenant.objects.all().values_list(
-                    'id', 'user__username')
-                for tenant_instance in tenants:
-                    data.append(
-                        {'id': tenant_instance[0], 'tenant_name': tenant_instance[1]})
+    def create(self, request, *args, **kwargs):
+        
+        # ====================
+        # create the landlord using the data provided by the user
+        # ====================
 
-                response_data = {
-                    'message': 'Tenants to add for the user',
-                    'data': data,
-                    'status': "SUCCESS"
-                }
-                return Response(response_data, status=status.HTTP_200_OK)
+        # create the invoice
+        landlord = LandlordSerializer(data=request.data)
+        if landlord.is_valid():
+            landlord.save()
 
-            else:
-                tenants = Tenant.objects.all().exclude(
-                    id__in=[tenant.get('tenants') for tenant in tenant_list]).values_list(
-                    'id', 'user__username')
-                for tenant_instance in tenants:
-                    data.append(
-                        {'id': tenant_instance[0], 'tenant_name': tenant_instance[1]})
-
-                response_data = {
-                    'message': 'Tenants to add for the user',
-                    'data': data,
-                    'status': "SUCCESS"
-                }
-                return Response(response_data, status=status.HTTP_200_OK)
-
-                pass
-
-        except ObjectDoesNotExist:
-            response_data = {
-                'message': 'No tenants for the user',
-                'data': [],
-                'status': "SUCCESS"
-            }
-            return Response(response_data, status=status.HTTP_200_OK)
-
-    def post(self, request):
-        if request.user.type != 'LANDLORD':
-            response_data = {
-                'message': 'User not eligible for adding tenant',
-                'data': [],
-                'status': "FAILED"
-            }
-            return Response(response_data, status=status.HTTP_200_OK)
-        tenant_id = request.data.get('id', None)
-        if tenant_id:
-            owner_instance = PropertyOwner.objects.get(user=request.user)
-            try:
-                tenant_instance = Tenant.objects.get(pk=tenant_id)
-                tenant_instance.owner.add(owner_instance)
-                owner_instance.tenants.add(tenant_instance)
-                response_data = {
-                    'message': 'Tenants added',
-                    'data': [],
-                    'status': "SUCCESS"
-                }
-                return Response(response_data, status=status.HTTP_200_OK)
-
-                print(owner_instance)
-            except Exception as e:
-                print(str(e))
-                response_data = {
-                    'message': 'Failed adding tenant',
-                    'data': [],
-                    'status': "FAILED"
-                }
-                return Response(response_data, status=status.HTTP_200_OK)
         response_data = {
-            'message': 'Please provide tenant',
-            'data': [],
-            'status': "FAILED"
+            "status": 201,
+            "message": "Landlord created successfully",
+            "landlord": landlord.data,
         }
-        return Response(response_data, status=400)
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+
+        # ====================
+        # update the landlord using the data provided by the user
+        # ====================
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def get_queryset(self):
+        user = self.request.user
+        # Determine if the user is a landlord or tenant and filter the invoices accordingly
+        if user.type == 'LANDLORD' or user.type == 'Landlord':
+            # get the landlord
+            queryset = Landlord.objects.filter(user=user)
+        else:
+            # get tenant
+            tenant = Tenant.objects.get(user=user)
+            queryset = Landlord.objects.filter(tenant=tenant)
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

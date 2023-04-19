@@ -1,7 +1,8 @@
-from rest_framework import (
-    authentication, generics, permissions, status, viewsets)
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from apps.tenants.models import Tenant
+from apps.landlords.models import Landlord
 
 from apps.invoices.serializers import InvoiceSerializer
 
@@ -14,70 +15,62 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        
+        # ====================
+        # create the invoice using the data provided by the user
+        # ====================
+        response_status = status.HTTP_201_CREATED
+        # create the invoice
+        invoice = InvoiceSerializer(data=request.data)
+        if invoice.is_valid():
+            invoice.save()
 
+            response_data = {
+                "status": 201,
+                "message": "Invoice created successfully",
+                "invoice": invoice.data
+            }
 
-class InvoiceCreateView(generics.CreateAPIView):
-    permission_classes = [permissions.IsAuthenticated,]
-    serializer_class = InvoiceSerializer
-
-    def post(self, request):
-        serializer = InvoiceSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            response_data = {'message': 'Invoice created successfully',
-                             'data': serializer.data,
-                             'status': status.HTTP_201_CREATED}
-            return Response(response_data, status=status.HTTP_201_CREATED)
         else:
-            response_data = {'message': 'Invoice creation failed',
-                             'data': serializer.errors,
-                             'status': status.HTTP_400_BAD_REQUEST}
-            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+            response_status = status.HTTP_406_NOT_ACCEPTABLE
+            response_data ={
+                "status": 406,
+                "message": "invalid invoice data"
+            }
 
+        return Response(response_data, status=response_status)
 
-class InvoiceUpdateView(generics.UpdateAPIView):
-    queryset = Invoice.objects.all()
-    serializer_class = InvoiceSerializer
-    permission_classes = [permissions.IsAuthenticated,]
+    def update(self, request, *args, **kwargs):
 
-    def put(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
+        # ====================
+        # update the invoice using the data provided by the user
+        # ====================
+
         instance = self.get_object()
-        serializer = self.get_serializer(
-            instance, data=request.data, partial=partial)
+        serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        response_data = {'message': 'Invoice updated successfully',
-                         'data': serializer.data,
-                         'status': status.HTTP_200_OK}
-        return Response(response_data)
+        return Response(serializer.data)
 
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    def get_queryset(self):
+        user = self.request.user
+        # Determine if the user is a landlord or tenant and filter the invoices accordingly
+        if user.type == 'LANDLORD' or user.type == 'Landlord':
+            # get the landlord
+            landlord = Landlord.objects.get(user=user)
+            queryset = Invoice.objects.filter(landlord=landlord)
+        else:
+            # get tenant
+            tenant = Tenant.objects.get(user=user)
+            queryset = Invoice.objects.filter(tenant=tenant)
+        return queryset
 
-class InvoiceDeleteView(generics.DestroyAPIView):
-    permission_classes = [permissions.IsAuthenticated,]
-
-    def delete(self, request, pk):
-        try:
-            instance = Invoice.objects.get(pk=pk)
-            self.check_object_permissions(request, instance)
-            instance.delete()
-            response_data = {'message': 'Invoice deleted successfully',
-                             'data': {},
-                             'status': status.HTTP_204_NO_CONTENT}
-            return Response(response_data, status=status.HTTP_204_NO_CONTENT)
-        except Invoice.DoesNotExist:
-            response_data = {'message': 'Invoice not found',
-                             'data': {},
-                             'status': status.HTTP_404_NOT_FOUND}
-            return Response(response_data, status=status.HTTP_404_NOT_FOUND)
-
-
-class InvoiceListView(generics.ListAPIView):
-    permission_classes = [permissions.IsAuthenticated,]
-    queryset = Invoice.objects.all()
-    serializer_class = InvoiceSerializer
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

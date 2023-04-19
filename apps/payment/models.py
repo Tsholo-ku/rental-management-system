@@ -2,7 +2,7 @@ from django.db import models
 from django.db import models
 from apps.property.models import Contract
 from apps.tenants.models import Tenant
-from apps.landlords.models import PropertyOwner
+from apps.landlords.models import Landlord
 from apps.invoices.models import Invoice
 
 
@@ -15,7 +15,7 @@ class Payment(models.Model):
 
     contract_id = models.ForeignKey(Contract, blank=True, null = True, on_delete=models.CASCADE)
     tenant_id = models.ForeignKey(Tenant, blank=True, null = True, on_delete=models.CASCADE)
-    property_owner_id = models.ForeignKey(PropertyOwner, blank=True, null=True, on_delete=models.CASCADE)
+    landlord_id = models.ForeignKey(Landlord, blank=True, null=True, on_delete=models.CASCADE)
     invoice_id = models.ForeignKey(Invoice, on_delete=models.CASCADE)
     payment_method = models.CharField(max_length=20, choices = Payment_method.choices, default="CASH")
     payment_status = models.BooleanField()
